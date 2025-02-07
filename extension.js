@@ -86,7 +86,7 @@ export default class Extension {
         if (this.displaySeconds) {
             total_draw_width = radius * 12 + spacing * 5;
         }
-        let left_spacing = (width - total_draw_width)/2;
+        let left_spacing = (width - total_draw_width) / 2;
 
         // Draw each part of the time.
         // Hours: tens place
@@ -111,6 +111,109 @@ export default class Extension {
         context.$dispose();
     }
 
+    /**
+     * Handles the repainting of the binary clock, drawing each digit of the current time in binary form.
+     * TODO support 12 hr, support drawing 5 dots hr
+     *
+     * @param {object} stdrawingarea - The St.DrawingArea widget used for custom drawing.
+     * @param {object} user_data - Additional user data passed to the callback, not used here.
+     */
+    _repaintevent_binary(stdrawingarea, user_data) {
+        // Get the current time in the correct timezone.
+        let tz = this.dateMenu._clock.get_timezone();
+        let date = GLib.DateTime.new_now(tz);
+        let hour_binary = date.get_hour().toString(2).padStart(6, '0');
+        let minute_binary = date.get_minute().toString(2).padStart(6, '0');
+        let second_binary = date.get_second().toString(2).padStart(6, '0');
+
+        // Prepare the drawing context and dimensions.
+        let context = stdrawingarea.get_context();
+        let [width, height] = stdrawingarea.get_surface_size();
+
+        // Define drawing parameters.
+        let spacing = 5;
+        let arcWidth = height / 2 - spacing * 1.5;
+        let arcHeight = arcWidth;
+        let radius = arcWidth / 2;
+
+        let total_draw_width = radius * 12 + spacing * 5;
+        if (this.displaySeconds) {
+            total_draw_width = radius * 18 + spacing * 8;
+        }
+
+        let left_spacing = (width - total_draw_width) / 2;
+        let top_spacing = (height - arcHeight * 2) / 2;
+
+        let initial_offset = left_spacing;
+
+        // Draw hours
+        for (let i = 0; i < 5; i++) {
+            const row = Number(i <= 2);
+            const col = 2 - i % 3;
+
+            const startX = initial_offset + (radius * 2) * col + spacing * col;
+            const startY = row * (radius * 2 + spacing) + top_spacing;
+
+            const light = 1;
+            const dark = 0.4;
+
+            const bit_idx = 5 - i;
+            const bit = hour_binary[bit_idx];
+
+            context.setSourceRGB(bit === '1' ? light : dark, bit === '1' ? light : dark, bit === '1' ? light : dark);
+
+            context.arc(startX, startY, radius, 0, 2 * Math.PI);
+            context.fill();
+        }
+
+        initial_offset += radius * 6 + spacing * 3;
+
+        for (let i = 0; i < 6; i++) {
+            const row = Number(i <= 2);
+            const col = 2 - i % 3;
+
+            const startX = initial_offset + (radius * 2) * col + spacing * col;
+            const startY = row * (radius * 2 + spacing) + top_spacing;
+
+            const light = 1;
+            const dark = 0.4;
+
+            const bit_idx = 5 - i;
+            const bit = minute_binary[bit_idx];
+
+            context.setSourceRGB(bit === '1' ? light : dark, bit === '1' ? light : dark, bit === '1' ? light : dark);
+
+            context.arc(startX, startY, radius, 0, 2 * Math.PI);
+            context.fill();
+        }
+
+        if (this.displaySeconds) {
+            initial_offset += radius * 6 + spacing * 3;
+
+            for (let i = 0; i < 6; i++) {
+                const row = Number(i <= 2);
+                const col = 2 - i % 3;
+
+                const startX = initial_offset + (radius * 2) * col + spacing * col;
+                const startY = row * (radius * 2 + spacing) + top_spacing;
+
+                const light = 1;
+                const dark = 0.4;
+
+                const bit_idx = 5 - i;
+                const bit = second_binary[bit_idx];
+
+                context.setSourceRGB(bit === '1' ? light : dark, bit === '1' ? light : dark, bit === '1' ? light : dark);
+
+                context.arc(startX, startY, radius, 0, 2 * Math.PI);
+                context.fill();
+            }
+        }
+
+
+        context.$dispose();
+    }
+
     enable() {
         this.dateMenu = Main.panel.statusArea['dateMenu'];
         if (!this.dateMenu) {
@@ -121,9 +224,10 @@ export default class Extension {
             schema: "org.gnome.desktop.interface"
         });
         this.displaySeconds = desktop_settings.get_boolean('clock-show-seconds');
+        this.clock_format = desktop_settings.get_string('clock-format');
         if (!this.button) {
             this.button = new St.Bin({
-                width: 100,
+                width: 500,
                 height: 20,
             });
         }
@@ -132,14 +236,14 @@ export default class Extension {
         }
         if (!this.binaryCalc) {
             this.binaryCalc = new St.DrawingArea({
-                width: 100,
+                width: 500,
                 height: 32,
             });
         }
 
         this.button.set_child(this.binaryCalc);
         this.boxlayout.add_child(this.button);
-        this.repaintConnection = this.binaryCalc.connect('repaint', this._repaintevent.bind(this));
+        this.repaintConnection = this.binaryCalc.connect('repaint', this._repaintevent_binary.bind(this));
         if (!this.oldClock) {
             this.oldClock = Main.panel.statusArea['dateMenu'].get_child_at_index(0);
         }
